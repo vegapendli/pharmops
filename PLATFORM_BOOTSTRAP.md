@@ -200,21 +200,37 @@ aws s3api put-bucket-versioning \
 
 ### 5.2 Apply Terraform
 
+Terraform requires two sensitive values that it will store in AWS Secrets Manager automatically — **no manual secret creation needed**.
+
+Create a `terraform.tfvars` file locally with your own values:
+
 ```bash
 cd pharmops/pharma-devops/terraform/envs/dev
 
+# Create this file locally — it is gitignored and must never be committed
+cat > terraform.tfvars << 'EOF'
+db_password = "<YOUR_DB_PASSWORD>"
+jwt_secret  = "<YOUR_JWT_SECRET_MIN_32_CHARS>"
+EOF
+```
+
+> `terraform.tfvars` is the standard way to pass sensitive values to Terraform. Each learner creates this file on their own machine with their own values. It is listed in `.gitignore` so it is never accidentally committed.
+
+```bash
 terraform init
 terraform plan
 terraform apply
 # Takes ~20 minutes (EKS cluster creation is the slowest step)
 ```
 
+Terraform will automatically create `/pharma/dev/db-credentials` and `/pharma/dev/jwt-secret` in AWS Secrets Manager using these values. External Secrets Operator later syncs them into Kubernetes Secrets in the `dev` namespace.
+
 **What gets created:**
 
 | Resource | Details |
 |----------|---------|
 | VPC | 10.0.0.0/16, 3 subnet tiers (public, private, data) |
-| EKS Cluster | pharma-dev-eks, t3.small nodes |
+| EKS Cluster | pharma-dev-cluster, t3.small nodes |
 | RDS PostgreSQL | db.t3.micro, multi-AZ off, database: pharmadb |
 | ECR Repositories | 5 repos (one per service) |
 | IAM Roles | EKS node role, External Secrets Operator role |
@@ -222,21 +238,6 @@ terraform apply
 
 > **Teaching point:** One `terraform apply` creates ~30 AWS resources in the correct dependency order — this is Infrastructure as Code.
 
-### 5.3 Create AWS Secrets Manager Secrets
-
-```bash
-# Database credentials (use a strong password)
-aws secretsmanager create-secret \
-  --name /pharma/dev/db-credentials \
-  --secret-string '{"username":"pharma","password":"<YOUR_DB_PASSWORD>"}' \
-  --region us-east-1
-
-# JWT signing secret (minimum 32 characters)
-aws secretsmanager create-secret \
-  --name /pharma/dev/jwt-secret \
-  --secret-string '{"secret":"<YOUR_JWT_SECRET_MIN_32_CHARS>"}' \
-  --region us-east-1
-```
 
 ---
 
@@ -244,7 +245,7 @@ aws secretsmanager create-secret \
 
 ```bash
 # EKS cluster exists
-aws eks describe-cluster --name pharma-dev-eks --query 'cluster.status' --output text
+aws eks describe-cluster --name pharma-dev-cluster --query 'cluster.status' --output text
 # Expected: ACTIVE
 
 # ECR repositories exist
@@ -263,7 +264,7 @@ aws secretsmanager list-secrets --query 'SecretList[].Name' --output table
 ```bash
 aws eks update-kubeconfig \
   --region us-east-1 \
-  --name pharma-dev-eks \
+  --name pharma-dev-cluster \
   --alias pharma-dev
 
 # Verify nodes are Ready

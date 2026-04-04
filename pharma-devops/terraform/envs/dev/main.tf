@@ -47,7 +47,7 @@ module "ecr" {
     "auth-service",
     "pharma-ui",
     "notification-service",
-    "catalog-service"
+    "drug-catalog-service"
   ]
 }
 
